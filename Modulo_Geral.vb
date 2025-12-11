@@ -1,0 +1,222 @@
+﻿Imports System.Globalization
+Imports System.Windows.Forms
+
+Module Modulo_Geral
+
+    Public db As New ADODB.Connection
+    Public rs As New ADODB.Recordset
+    Public dir_banco = Application.StartupPath & "\Banco\livraria.mdb"
+    Public diretorio, usuario, senha, sql, tipo, status, aux_usuario, resp As String
+    Public cont As Integer
+
+    Sub conectar_banco()
+        Try
+            db = CreateObject("ADODB.Connection")
+            db.Open("Provider=Microsoft.Jet.OLEDB.4.0;Data Source=" & dir_banco)
+        Catch ex As Exception
+            MsgBox("Erro ao Conectar", MsgBoxStyle.Critical + MsgBoxStyle.OkOnly, "AVISO")
+        End Try
+    End Sub
+
+    ' -------------------------------------
+    ' SEUS SUBS ORIGINAIS (MANTIDOS)
+    ' -------------------------------------
+
+    Sub carregar_dados_cliente()
+        With cadastro_clientes.dgv_clientes
+            sql = "select * from tb_clientes order by nome asc"
+            rs = db.Execute(sql)
+            .Rows.Clear()
+            Do While Not rs.EOF
+                .Rows.Add(rs.Fields(0).Value, rs.Fields(1).Value, rs.Fields(2).Value, rs.Fields(3).Value, Nothing, Nothing)
+                rs.MoveNext()
+            Loop
+        End With
+    End Sub
+
+    Sub carregar_dados_produto2()
+        With consulta_produtos.dgv_produtos
+            sql = "select * from tb_produtos order by nome_prod asc"
+            rs = db.Execute(sql)
+            .Rows.Clear()
+            Do While Not rs.EOF
+                .Rows.Add(
+                    rs.Fields(0).Value,
+                    rs.Fields(1).Value,
+                    rs.Fields(2).Value,
+                    rs.Fields(3).Value,
+                    rs.Fields(4).Value,
+                    rs.Fields(5).Value,
+                    rs.Fields(6).Value,
+                    Nothing,
+                    Nothing
+                )
+                rs.MoveNext()
+            Loop
+        End With
+    End Sub
+
+    Sub carregar_dados_produto()
+        With cadastro_produtos.dgv_produtos
+            sql = "select * from tb_produtos order by nome_prod asc"
+            rs = db.Execute(sql)
+            .Rows.Clear()
+            Do While Not rs.EOF
+                .Rows.Add(
+                    rs.Fields(0).Value,
+                    rs.Fields(1).Value,
+                    rs.Fields(2).Value,
+                    rs.Fields(3).Value,
+                    rs.Fields(4).Value,
+                    rs.Fields(5).Value,
+                    rs.Fields(6).Value,
+                    Nothing,
+                    Nothing
+                )
+                rs.MoveNext()
+            Loop
+        End With
+    End Sub
+
+    Sub carregar_dados_usuario()
+        With cadastro_usuarios.dgv_usuarios
+            sql = "select * from usuarios order by usuario asc"
+            rs = db.Execute(sql)
+            .Rows.Clear()
+            Do While Not rs.EOF
+                .Rows.Add(
+                    rs.Fields(1).Value,
+                    rs.Fields(2).Value,
+                    rs.Fields(3).Value,
+                    rs.Fields(4).Value,
+                    rs.Fields(5).Value,
+                    Nothing, Nothing, Nothing, Nothing
+                )
+                rs.MoveNext()
+            Loop
+        End With
+    End Sub
+
+    ' -------------------------------------------------------
+    ' NOVA FUNÇÃO → EXCLUSIVA DO FORMULÁRIO consulta_produtos
+    ' -------------------------------------------------------
+    Sub carregar_dados_pedidos()
+
+        If db Is Nothing OrElse db.State <> 1 Then
+            MsgBox("Conexão com o banco não está aberta.", vbCritical, "Erro")
+            Exit Sub
+        End If
+
+        With cadastro_pedidos.DataGridView1
+
+            sql = "SELECT cpf_cliente, cod_prod, [data], nome_prod, quantidade, valor_total " &
+              "FROM pedidos ORDER BY [data] DESC"
+
+            Try
+                rs = db.Execute(sql)
+                .Rows.Clear()
+
+                Do While Not rs.EOF
+
+                    Dim valor As Double = 0.0
+                    Dim dataFormatada As String = ""
+
+                    If Not IsDBNull(rs.Fields("valor_total").Value) Then
+                        valor = Convert.ToDouble(rs.Fields("valor_total").Value)
+                    End If
+
+                    If Not IsDBNull(rs.Fields("data").Value) Then
+                        dataFormatada = CDate(rs.Fields("data").Value).ToString("dd/MM/yyyy")
+                    End If
+
+                    .Rows.Add(
+                    rs.Fields("cpf_cliente").Value,
+                    rs.Fields("cod_prod").Value,
+                    rs.Fields("nome_prod").Value,
+                    dataFormatada,
+                    rs.Fields("quantidade").Value,
+                    valor.ToString("N2")
+                )
+
+                    rs.MoveNext()
+                Loop
+
+            Catch ex As Exception
+                MsgBox("Erro ao carregar pedidos: " & ex.Message)
+            End Try
+
+        End With
+
+    End Sub
+    Public Function BaixarEstoque(cod As Integer, qtdVendida As Integer) As Boolean
+
+        Dim rsEstoque As Object = CreateObject("ADODB.Recordset")
+
+        sql = "SELECT estoque FROM tb_produtos WHERE codigo=" & cod
+        rsEstoque.Open(sql, db, 3, 1)
+
+        If rsEstoque.EOF Then Return False
+
+        Dim estoqueAtual As Integer = rsEstoque.Fields("estoque").Value
+
+        ' NÃO deixa ficar negativo
+        If estoqueAtual < qtdVendida Then
+            MsgBox("Estoque insuficiente!" & vbCrLf &
+               "Disponível: " & estoqueAtual & vbCrLf &
+               "Solicitado: " & qtdVendida, vbCritical)
+            Return False
+        End If
+
+        ' Atualiza estoque
+        sql = "UPDATE tb_produtos SET estoque = estoque - " & qtdVendida &
+          " WHERE codigo = " & cod
+        db.Execute(sql)
+
+        Return True
+
+    End Function
+
+    Public Sub CarregarProdutosFiltro(filtro As String, campo As String)
+
+        If db Is Nothing OrElse db.State <> 1 Then
+            conectar_banco()
+        End If
+
+        Dim sqlFilt As String
+
+        If campo = "" Or filtro = "" Then
+            sqlFilt = "SELECT * FROM tb_produtos ORDER BY nome_prod"
+        Else
+            sqlFilt = "SELECT * FROM tb_produtos WHERE " & campo & " LIKE '%" & filtro & "%'"
+        End If
+
+        Try
+            rs = db.Execute(sqlFilt)
+            consulta_produtos.dgv_produtos.Rows.Clear()
+
+            Dim i As Integer = 0
+
+            While Not rs.EOF
+
+                consulta_produtos.dgv_produtos.Rows.Add(
+                rs.Fields("codigo").Value,
+                rs.Fields("nome_prod").Value,
+                rs.Fields("editora").Value,
+                rs.Fields("categoria").Value,
+                rs.Fields("preco").Value,
+                rs.Fields("quantidade").Value
+            )
+
+                consulta_produtos.dgv_produtos.Rows(i).Tag = rs.Fields("imagem").Value.ToString()
+
+                i += 1
+                rs.MoveNext()
+            End While
+
+        Catch ex As Exception
+            MsgBox("Erro ao carregar produtos: " & ex.Message)
+        End Try
+
+    End Sub
+
+End Module
